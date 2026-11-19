@@ -5,7 +5,8 @@
 // photo on a panel to replace it. Everything runs offline: fonts, samples and
 // scripts are files under app/, photos never leave the machine.
 
-import { drawCover, SIZES, LAYOUTS, GRADES, layoutRects } from './cover.js';
+import { drawCover, SIZES, LAYOUTS, GRADES, layoutRects, layoutPolys } from './cover.js';
+import { makeShootoutImage } from './shootout.js';
 import { runShot } from './shots.js';
 
 const canvas = document.getElementById('cover');
@@ -20,6 +21,8 @@ const SAMPLES = [
   { file: 'gasstation.jpg', name: 'Gas station', anchorX: 0.5, anchorY: 0.45 },
   { file: 'motorcycle.jpg', name: 'Motorcycle', anchorX: 0.5, anchorY: 0.45 },
   { file: 'speedboat.jpg', name: 'Speedboat', anchorX: 0.5, anchorY: 0.45 },
+  // Procedural, drawn in-app: a gang shootout at dusk, no photo fetched.
+  { file: null, name: 'Shootout', anchorX: 0.5, anchorY: 0.45, procedural: true },
 ];
 
 const state = {
@@ -87,7 +90,9 @@ export function loadImage(url) {
 async function loadSamples() {
   for (const s of SAMPLES) {
     try {
-      const img = await loadImage(`samples/${s.file}`);
+      const img = s.procedural
+        ? makeShootoutImage()
+        : await loadImage(`samples/${s.file}`);
       state.photos.push({ img, name: s.name, anchorX: s.anchorX, anchorY: s.anchorY });
     } catch {
       // A missing sample just leaves one fewer photo in the strip.
@@ -125,7 +130,8 @@ function renderStrip() {
     btn.setAttribute('role', 'option');
     btn.title = photo.name;
     const img = document.createElement('img');
-    img.src = photo.img.src;
+    // Procedural samples are canvases, not <img>s: snapshot one for the thumb.
+    img.src = photo.img.tagName === 'CANVAS' ? photo.img.toDataURL('image/jpeg', 0.85) : photo.img.src;
     img.alt = photo.name;
     img.draggable = true;
     const n = document.createElement('span');
@@ -254,6 +260,7 @@ const GRADE_SWATCH = {
   neon: 'linear-gradient(135deg,#00e5ff,#3b0f8f 50%,#ff2e88)',
   golden: 'linear-gradient(135deg,#fff3a3,#ffd23f 40%,#ff8a00 75%,#ff5e3a)',
   ink: 'linear-gradient(135deg,#fff6c9,#ffb400 50%,#222244)',
+  dusk: 'linear-gradient(135deg,#2ee6c8,#00c2a8 40%,#ff7a18 75%,#1b2a6b)',
 };
 const gradeGridEl = document.getElementById('gradeGrid');
 Object.entries(GRADES).forEach(([key, def]) => {
@@ -385,6 +392,20 @@ function canvasPoint(e) {
 }
 function panelAt(x, y) {
   const size = SIZES[state.size];
+  const polys = layoutPolys(state.layout, size.w, size.h);
+  const inside = (pts) => {
+    let ok = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i];
+      const [xj, yj] = pts[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) ok = !ok;
+    }
+    return ok;
+  };
+  const hit = polys.findIndex((p) => inside(p.pts));
+  if (hit >= 0) return hit;
+  // Near a slanted edge the point can fall in the gutter: fall back to the
+  // nearest bounding box.
   const rects = layoutRects(state.layout, size.w, size.h);
   return rects.findIndex((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
 }
@@ -509,13 +530,41 @@ async function exportAll() {
 document.getElementById('exportAll').addEventListener('click', exportAll);
 document.getElementById('exportAllTop').addEventListener('click', exportAll);
 
+// ---------- surprise me ----------
+
+const SURPRISES = [
+  { title: 'VICE HEAT', subtitle: 'Neon Palms', tagline: 'ONE COAST · NO RULES · COMING SOON', layout: 'hero', grade: 'vice' },
+  { title: 'GOLDEN HEIST', subtitle: 'Coastline Run', tagline: 'TAKE THE SUNSET AND RUN', layout: 'comic', grade: 'golden' },
+  { title: 'MIDNIGHT RUN', subtitle: 'After Dark', tagline: 'THE CITY NEVER SLEEPS', layout: 'comic', grade: 'neon' },
+  { title: 'PALM ROYALE', subtitle: 'Velvet Coast', tagline: 'KINGS OF THE BOULEVARD', layout: 'hero', grade: 'dusk' },
+  { title: 'TURBO SUNSET', subtitle: 'Full Throttle', tagline: 'NO BRAKES · NO MERCY', layout: 'nine', grade: 'ink' },
+  { title: 'HOT PURSUIT', subtitle: 'Sirens & Smoke', tagline: 'CATCH ME IF YOU CAN', layout: 'hero', grade: 'vice' },
+];
+document.getElementById('surpriseTop').addEventListener('click', () => {
+  const pick = SURPRISES[Math.floor(Math.random() * SURPRISES.length)];
+  Object.assign(state, pick);
+  resetPanels();
+  state.panels.forEach((p, i) => {
+    p.photo = [0, 1, 6, 3, 4, 5][i % 6] % state.photos.length;
+    p.cy = state.photos[p.photo]?.anchorY ?? 0.5;
+  });
+  document.getElementById('title').value = state.title;
+  document.getElementById('subtitle').value = state.subtitle;
+  document.getElementById('tagline').value = state.tagline;
+  document.querySelectorAll('.layout-btn').forEach((x) => x.classList.toggle('active', x.dataset.layout === state.layout));
+  document.querySelectorAll('.grade-btn').forEach((x) => x.classList.toggle('active', x.dataset.grade === state.grade));
+  renderPanelDots();
+  redraw();
+});
+
 // ---------- boot + screenshot scenes ----------
 
 async function boot() {
   await loadSamples();
   state.panels.forEach((p, i) => {
-    // Default spread: boulevard hero, then the rest across the panels.
-    p.photo = [0, 1, 4, 3, 5, 2][i % 6] % state.photos.length;
+    // Default spread: boulevard hero, then the rest across the panels —
+    // the procedural shootout takes the top-right panel.
+    p.photo = [0, 1, 6, 3, 4, 5][i % 6] % state.photos.length;
     p.cy = state.photos[p.photo]?.anchorY ?? 0.5;
   });
   renderStrip();

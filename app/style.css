@@ -108,8 +108,11 @@ input[type=range] { accent-color: #ff2e88; width: 100%; }
 .field input { margin-top: 4px; }
 
 body.shot-cover { overflow: hidden; }
-body.shot-cover .topbar, body.shot-cover .col, body.shot-cover .size-pills, body.shot-cover .export-row { display: none; }
+/* Hide only the side columns and chrome — the preview column must stay
+ * visible (the v1 selector hid every .col, including .preview-col, so the
+ * cover shot came out blank). */
+body.shot-cover .topbar, body.shot-cover .photos-col, body.shot-cover .side-col, body.shot-cover .size-pills, body.shot-cover .export-row { display: none; }
 body.shot-cover .app { display: block; padding: 0; }
-body.shot-cover .preview-col { border: 0; background: none; padding: 0; border-radius: 0; }
+body.shot-cover .preview-col { display: flex; border: 0; background: none; padding: 0; border-radius: 0; }
 body.shot-cover .canvas-wrap { height: 100vh; }
 body.shot-cover canvas { max-width: 100vw; max-height: 100vh; box-shadow: none; border-radius: 0; }

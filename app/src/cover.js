@@ -29,6 +29,7 @@ export const GRADES = {
   neon: { label: 'Neon Night', sat: 1.35, con: 1.12, bri: 0.96, tint: ['#00e5ff', '#ff2e88', '#3b0f8f'], tintAlpha: 0.22 },
   golden: { label: 'Golden Hour', sat: 1.18, con: 1.04, bri: 1.06, tint: ['#ffd23f', '#ff8a00', '#ff5e3a'], tintAlpha: 0.14 },
   ink: { label: 'Comic Ink', sat: 1.45, con: 1.35, bri: 1.0, tint: ['#ff9d00', '#e53888', '#222244'], tintAlpha: 0.12 },
+  dusk: { label: 'Dusk Teal', sat: 1.3, con: 1.1, bri: 0.98, tint: ['#00c2a8', '#ff7a18', '#1b2a6b'], tintAlpha: 0.18 },
 };
 
 export const PANEL_LABELS = [
@@ -52,49 +53,105 @@ export function seededRandom(seedText) {
   };
 }
 
-/** Panel rectangles for a layout, as fractions of the panel area. */
-export function layoutRects(name, W, H) {
-  const areaH = H * 0.88; // panels stop above the tagline strip
-  const g = Math.round(Math.min(W, H) * 0.007); // cream gutter
-  const u = (x, y, w, h) => ({
-    x: Math.round(x * W) + g, y: Math.round(y * areaH) + g,
-    w: Math.round(w * W) - g * 2, h: Math.round(h * areaH) - g * 2,
-  });
-  switch (name) {
-    case 'hero': return [
-      u(0, 0, 0.55, 0.72), u(0.55, 0, 0.225, 0.36), u(0.775, 0, 0.225, 0.36),
-      u(0.55, 0.36, 0.225, 0.36), u(0.775, 0.36, 0.225, 0.36), u(0, 0.72, 0.55, 0.28),
-    ];
-    case 'comic': return [
-      u(0, 0, 0.5, 0.36), u(0.5, 0, 0.5, 0.36), u(0, 0.36, 0.34, 0.32),
-      u(0.34, 0.36, 0.33, 0.32), u(0.67, 0.36, 0.33, 0.32), u(0, 0.68, 1, 0.32),
-    ];
-    case 'nine': {
-      const out = [];
-      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out.push(u(c / 3, r / 3, 1 / 3, 1 / 3));
-      return out;
-    }
-    case 'single': return [u(0, 0, 1, 1)];
-    case 'two': return [u(0, 0, 0.5, 1), u(0.5, 0, 0.5, 1)];
-    case 'three': return [u(0, 0, 0.55, 1), u(0.55, 0, 0.45, 0.5), u(0.55, 0.5, 0.45, 0.5)];
-    case 'four': return [u(0, 0, 0.5, 0.5), u(0.5, 0, 0.5, 0.5), u(0, 0.5, 0.5, 0.5), u(0.5, 0.5, 0.5, 0.5)];
-    default: return [u(0, 0, 1, 1)];
-  }
+// Cell tables for the slanted comic panels (GTA style): [x0, x1, y0, y1] as
+// fractions of the panel area, plus the divider slant — a fraction of W
+// applied at the top of the area, easing to 0 at the bottom. Internal
+// vertical dividers lean; outer edges stay vertical, so the collage bleeds
+// cleanly to the poster edges with no bare corner triangles.
+const LAYOUT_CELLS = {
+  hero: {
+    slant: 0.03,
+    cells: [
+      [0, 0.50, 0, 1], [0.50, 0.75, 0, 0.50], [0.75, 1, 0, 0.50],
+      [0.50, 0.75, 0.50, 1], [0.75, 1, 0.50, 0.75], [0.75, 1, 0.75, 1],
+    ],
+  },
+  comic: {
+    slant: -0.025,
+    cells: [
+      [0, 0.58, 0, 0.36], [0.58, 1, 0, 0.36], [0, 0.30, 0.36, 0.68],
+      [0.30, 0.70, 0.36, 0.68], [0.70, 1, 0.36, 0.68], [0, 1, 0.68, 1],
+    ],
+  },
+  nine: {
+    slant: 0.02,
+    cells: [
+      [0, 1 / 3, 0, 1 / 3], [1 / 3, 2 / 3, 0, 1 / 3], [2 / 3, 1, 0, 1 / 3],
+      [0, 1 / 3, 1 / 3, 2 / 3], [1 / 3, 2 / 3, 1 / 3, 2 / 3], [2 / 3, 1, 1 / 3, 2 / 3],
+      [0, 1 / 3, 2 / 3, 1], [1 / 3, 2 / 3, 2 / 3, 1], [2 / 3, 1, 2 / 3, 1],
+    ],
+  },
+  single: { slant: 0, cells: [[0, 1, 0, 1]] },
+  two: { slant: 0.03, cells: [[0, 0.5, 0, 1], [0.5, 1, 0, 1]] },
+  three: {
+    slant: 0.025,
+    cells: [[0, 0.55, 0, 1], [0.55, 1, 0, 0.5], [0.55, 1, 0.5, 1]],
+  },
+  four: {
+    slant: 0.02,
+    cells: [[0, 0.5, 0, 0.5], [0.5, 1, 0, 0.5], [0, 0.5, 0.5, 1], [0.5, 1, 0.5, 1]],
+  },
+};
+
+/** X of a vertical divider at a given height fraction (outer edges fixed). */
+function dividerX(fx, fy, slant, W) {
+  if (fx <= 0 || fx >= 1) return fx * W;
+  return fx * W + slant * W * (1 - fy);
 }
 
-/** Cover-crop draw of one photo into a rect, with zoom and a crop centre. */
-export function drawPhotoInto(ctx, img, rect, zoom, cx, cy, grade, strength) {
+/** Panel polygons for a layout: [{ pts: [[x, y] x4], rect: {x, y, w, h} }]. */
+export function layoutPolys(name, W, H) {
+  const def = LAYOUT_CELLS[name] || LAYOUT_CELLS.single;
+  const areaH = H * 0.88; // panels stop above the tagline strip
+  const g = Math.round(Math.min(W, H) * 0.007); // cream gutter
+  return def.cells.map(([fx0, fx1, fy0, fy1]) => {
+    const y0 = fy0 * areaH;
+    const y1 = fy1 * areaH;
+    const pts = [
+      [dividerX(fx0, fy0, def.slant, W) + g, y0 + g],
+      [dividerX(fx1, fy0, def.slant, W) - g, y0 + g],
+      [dividerX(fx1, fy1, def.slant, W) - g, y1 - g],
+      [dividerX(fx0, fy1, def.slant, W) + g, y1 - g],
+    ];
+    const xs = pts.map((p) => p[0]);
+    const ys = pts.map((p) => p[1]);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    return {
+      pts,
+      rect: { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY },
+    };
+  });
+}
+
+/** Panel rectangles for a layout (bounding boxes; minis and hit tests). */
+export function layoutRects(name, W, H) {
+  return layoutPolys(name, W, H).map((p) => p.rect);
+}
+
+/** Cover-crop draw of one photo into a rect, with zoom and a crop centre.
+ *  When `poly` is given (a slanted panel), the photo is clipped to the
+ *  polygon instead; placement still uses the bounding rect. */
+export function drawPhotoInto(ctx, img, rect, zoom, cx, cy, grade, strength, poly) {
   const iw = img.naturalWidth || img.width;
   const ih = img.naturalHeight || img.height;
   const base = Math.max(rect.w / iw, rect.h / ih);
   const scale = base * zoom;
   const pw = iw * scale;
   const ph = ih * scale;
-  const ox = rect.x + rect.w / 2 - pw * cx;
-  const oy = rect.y + rect.h / 2 - ph * cy;
+  // Cover-crop offsets, clamped so the image always covers the rect: the
+  // crop centre only distributes overflow, it must never open a gap.
+  const ox = Math.min(rect.x, Math.max(rect.x + rect.w - pw, rect.x + rect.w / 2 - pw * cx));
+  const oy = Math.min(rect.y, Math.max(rect.y + rect.h - ph, rect.y + rect.h / 2 - ph * cy));
   ctx.save();
   ctx.beginPath();
-  ctx.rect(rect.x, rect.y, rect.w, rect.h);
+  if (poly) {
+    ctx.moveTo(poly[0][0], poly[0][1]);
+    for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1]);
+    ctx.closePath();
+  } else {
+    ctx.rect(rect.x, rect.y, rect.w, rect.h);
+  }
   ctx.clip();
   ctx.filter = `saturate(${(1 + (grade.sat - 1) * strength).toFixed(3)}) ` +
     `contrast(${(1 + (grade.con - 1) * strength).toFixed(3)}) ` +
@@ -111,37 +168,48 @@ export function drawPhotoInto(ctx, img, rect, zoom, cx, cy, grade, strength) {
   ctx.restore();
 }
 
-/** A lens-flare sun glow drawn over the hero panel: core, halo, streaks. */
+/** A lens-flare sun glow drawn over the hero panel: core, halo, streaks.
+ *  The boulevard photo already has its own sun low on the left, so the
+ *  glow reinforces that spot — a second sun stamped over the subject's
+ *  face was the v1 glare smear. Small core, short thin streak, no wash. */
 export function drawSunGlow(ctx, rect, grade) {
-  const sx = rect.x + rect.w * 0.86;
-  const sy = rect.y + rect.h * 0.16;
-  const r = rect.w * 0.42;
+  const sx = rect.x + rect.w * 0.07;
+  const sy = rect.y + rect.h * 0.30;
+  const r = rect.w * 0.26;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   const halo = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-  halo.addColorStop(0, 'rgba(255, 236, 170, 0.95)');
-  halo.addColorStop(0.18, 'rgba(255, 190, 90, 0.55)');
-  halo.addColorStop(0.5, 'rgba(255, 110, 80, 0.18)');
+  halo.addColorStop(0, 'rgba(255, 236, 170, 0.85)');
+  halo.addColorStop(0.25, 'rgba(255, 190, 90, 0.4)');
+  halo.addColorStop(0.6, 'rgba(255, 110, 80, 0.12)');
   halo.addColorStop(1, 'rgba(255, 110, 80, 0)');
   ctx.fillStyle = halo;
   ctx.beginPath();
   ctx.arc(sx, sy, r, 0, Math.PI * 2);
   ctx.fill();
-  // Horizontal flare streak through the sun.
+  // One short, thin horizontal flare streak through the sun.
   ctx.translate(sx, sy);
-  ctx.rotate(-0.12);
-  const streak = ctx.createLinearGradient(-r * 1.4, 0, r * 1.4, 0);
+  ctx.rotate(-0.08);
+  const streak = ctx.createLinearGradient(-r, 0, r, 0);
   streak.addColorStop(0, 'rgba(255, 220, 160, 0)');
-  streak.addColorStop(0.5, 'rgba(255, 220, 160, 0.5)');
+  streak.addColorStop(0.5, 'rgba(255, 220, 160, 0.32)');
   streak.addColorStop(1, 'rgba(255, 220, 160, 0)');
   ctx.fillStyle = streak;
-  ctx.fillRect(-r * 1.4, -r * 0.012, r * 2.8, r * 0.024);
-  ctx.fillRect(-r * 0.5, -r * 0.05, r, r * 0.1);
+  ctx.fillRect(-r, -r * 0.008, r * 2, r * 0.016);
   ctx.restore();
   ctx.save();
   ctx.fillStyle = 'rgba(255, 250, 225, 0.95)';
   ctx.beginPath();
-  ctx.arc(sx, sy, r * 0.07, 0, Math.PI * 2);
+  ctx.arc(sx, sy, r * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+  // Two small bokeh ghosts trailing right of the sun.
+  ctx.fillStyle = 'rgba(255, 200, 120, 0.28)';
+  ctx.beginPath();
+  ctx.arc(sx + r * 0.55, sy + r * 0.10, r * 0.045, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255, 150, 160, 0.20)';
+  ctx.beginPath();
+  ctx.arc(sx + r * 0.95, sy - r * 0.06, r * 0.03, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -161,9 +229,9 @@ export function starPath(ctx, x, y, r) {
 
 /** The giant skewed gradient title, with a layered outline and magenta shadow. */
 export function drawTitle(ctx, text, W, H, grade) {
-  const top = H * 0.56;
+  const top = H * 0.55;
   const maxW = W * 0.98;
-  let size = H * 0.27;
+  let size = H * 0.29;
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
@@ -180,6 +248,9 @@ export function drawTitle(ctx, text, W, H, grade) {
   if (grade === 'neon') {
     grad.addColorStop(0, '#aef7ff'); grad.addColorStop(0.45, '#38e1ff');
     grad.addColorStop(0.75, '#ff5fa2'); grad.addColorStop(1, '#ff2e88');
+  } else if (grade === 'dusk') {
+    grad.addColorStop(0, '#d8fff4'); grad.addColorStop(0.45, '#2ee6c8');
+    grad.addColorStop(0.75, '#ff9d00'); grad.addColorStop(1, '#ff5e3a');
   } else if (grade === 'ink') {
     grad.addColorStop(0, '#fff6c9'); grad.addColorStop(0.5, '#ffb400');
     grad.addColorStop(1, '#ff5e3a');
@@ -235,13 +306,25 @@ export function drawSubtitle(ctx, text, W, H, titleSize) {
   ctx.restore();
 }
 
-/** Five gold stars plus the press-quote bar above the title. */
+/** Five gold stars plus the press quote, set in a full-width dark press
+ *  strip across the collage — a deliberate masthead band, never a pill
+ *  floating over one panel by accident. */
 export function drawStarsAndQuote(ctx, quote, source, W, H) {
-  const y = H * 0.50;
-  const starR = H * 0.016;
-  const gap = starR * 2.5;
-  const x0 = W * 0.045;
+  const bandY = H * 0.482;
+  const bandH = H * 0.042;
   ctx.save();
+  const band = ctx.createLinearGradient(0, bandY, 0, bandY + bandH);
+  band.addColorStop(0, 'rgba(12, 4, 14, 0.94)');
+  band.addColorStop(1, 'rgba(12, 4, 14, 0.80)');
+  ctx.fillStyle = band;
+  ctx.fillRect(0, bandY, W, bandH);
+  ctx.fillStyle = '#ffc93c';
+  ctx.fillRect(0, bandY, W, Math.max(2, bandH * 0.05));
+  ctx.fillRect(0, bandY + bandH - Math.max(2, bandH * 0.05), W, Math.max(2, bandH * 0.05));
+  const y = bandY + bandH / 2;
+  const starR = bandH * 0.30;
+  const gap = starR * 2.6;
+  const x0 = W * 0.022;
   for (let i = 0; i < 5; i++) {
     starPath(ctx, x0 + i * gap, y, starR);
     ctx.fillStyle = '#ffc93c';
@@ -250,20 +333,21 @@ export function drawStarsAndQuote(ctx, quote, source, W, H) {
     ctx.fill();
     ctx.stroke();
   }
-  const quoteText = `“${quote}” — ${source}`;
-  const fs = Math.max(12, H * 0.021);
+  let quoteText = `“${quote}” — ${source}`;
+  let fs = Math.max(11, bandH * 0.46);
   ctx.font = `600 ${fs}px Oswald, sans-serif`;
-  const qw = ctx.measureText(quoteText).width;
-  const pad = fs * 0.7;
-  const bx = x0 + 5 * gap + gap * 0.4;
-  ctx.fillStyle = 'rgba(10, 4, 12, 0.88)';
-  ctx.beginPath();
-  ctx.roundRect(bx, y - fs * 0.75, qw + pad * 2, fs * 1.5, fs * 0.75);
-  ctx.fill();
+  const maxQW = W * 0.80;
+  while (ctx.measureText(quoteText).width > maxQW && fs > 11) {
+    fs -= 1;
+    ctx.font = `600 ${fs}px Oswald, sans-serif`;
+  }
+  while (ctx.measureText(quoteText).width > maxQW && quoteText.length > 12) {
+    quoteText = quoteText.slice(0, -5) + '…”';
+  }
   ctx.fillStyle = '#fff3d6';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(quoteText, bx + pad, y + fs * 0.05);
+  ctx.fillText(quoteText, x0 + 5 * gap + gap * 0.5, y + fs * 0.05);
   ctx.restore();
 }
 
@@ -303,24 +387,24 @@ export function drawSeal(ctx, cx, cy, r) {
   ctx.restore();
 }
 
-/** A palm silhouette: curved trunk with drooping fronds. */
+/** A palm silhouette: curved trunk with full drooping fronds. */
 export function drawPalm(ctx, x, y, s) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s, s);
   ctx.strokeStyle = '#14060f';
   ctx.fillStyle = '#14060f';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 3.5;
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.quadraticCurveTo(4, -22, 10, -34);
+  ctx.quadraticCurveTo(5, -24, 12, -38);
   ctx.stroke();
-  for (let i = 0; i < 6; i++) {
-    const a = -Math.PI * (0.15 + i * 0.14);
+  for (let i = 0; i < 7; i++) {
+    const a = -Math.PI * (0.06 + i * 0.14);
     ctx.beginPath();
-    ctx.moveTo(10, -34);
-    ctx.quadraticCurveTo(10 + Math.cos(a) * 22, -34 + Math.sin(a) * 16, 10 + Math.cos(a) * 34, -34 + Math.sin(a) * 26 + 10);
-    ctx.quadraticCurveTo(10 + Math.cos(a) * 20, -34 + Math.sin(a) * 10, 10, -34);
+    ctx.moveTo(12, -38);
+    ctx.quadraticCurveTo(12 + Math.cos(a) * 26, -38 + Math.sin(a) * 18, 12 + Math.cos(a) * 40, -38 + Math.sin(a) * 30 + 12);
+    ctx.quadraticCurveTo(12 + Math.cos(a) * 22, -38 + Math.sin(a) * 10, 12, -38);
     ctx.fill();
   }
   ctx.restore();
@@ -407,57 +491,92 @@ export function drawCover(canvas, state) {
   ctx.fillStyle = '#fdf6e3';
   ctx.fillRect(0, 0, W, H);
 
-  const rects = layoutRects(state.layout, W, H);
+  const polys = layoutPolys(state.layout, W, H);
+  const g = Math.round(Math.min(W, H) * 0.007); // cream gutter
   const labels = state.layout === 'single' ? [''] : PANEL_LABELS;
-  rects.forEach((rect, i) => {
+  polys.forEach(({ pts, rect }, i) => {
     const panel = state.panels[i] || { photo: 0, zoom: 1, cx: 0.5, cy: 0.5 };
     const photo = state.photos[panel.photo];
     if (photo && photo.img) {
       const cx = panel.cx ?? photo.anchorX ?? 0.5;
       const cy = panel.cy ?? photo.anchorY ?? 0.5;
-      drawPhotoInto(ctx, photo.img, rect, panel.zoom || 1, cx, cy, grade, strength);
+      drawPhotoInto(ctx, photo.img, rect, panel.zoom || 1, cx, cy, grade, strength, pts);
     } else {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+      ctx.closePath();
       ctx.fillStyle = '#3a2b4d';
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fill();
+      ctx.restore();
     }
+    // Cream comic border along the slanted panel edge.
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+    ctx.closePath();
+    ctx.strokeStyle = '#fdf6e3';
+    ctx.lineWidth = g;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    ctx.restore();
     // Hero focal moment: sun glow on the first panel of hero / single layouts.
-    if ((state.layout === 'hero' || state.layout === 'single') && i === 0 && state.grade !== 'neon') {
+    if ((state.layout === 'hero' || state.layout === 'single') && i === 0 &&
+      (state.grade === 'vice' || state.grade === 'golden')) {
       drawSunGlow(ctx, rect, grade);
     }
     if (state.selectedPanel === i && state.showSelection) {
       ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+      ctx.closePath();
       ctx.strokeStyle = '#ff2e88';
       ctx.lineWidth = Math.max(3, H * 0.004);
       ctx.setLineDash([H * 0.012, H * 0.008]);
-      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.stroke();
       ctx.restore();
     }
     // Panel caption chip, top-left inside the panel (skipped on low panels
-    // the title covers, so no half-hidden chip peeks out).
-    const label = labels[i % labels.length];
-    if (label && rect.y < H * 0.55) {
+    // the title covers, so no half-hidden chip peeks out). The procedural
+    // shootout photo is labelled as what it is.
+    const label = photo?.name === 'Shootout'
+      ? 'THE SHOOTOUT'
+      : labels[i % labels.length];
+    if (label && pts[0][1] < H * 0.55) {
       const fs = Math.max(11, H * 0.016);
       ctx.save();
       ctx.font = `700 ${fs}px Oswald, sans-serif`;
       const tw = ctx.measureText(label).width;
+      const chipX = pts[0][0] + H * 0.008;
+      const chipY = pts[0][1] + H * 0.008;
       ctx.fillStyle = 'rgba(10,4,12,0.85)';
       ctx.beginPath();
-      ctx.roundRect(rect.x + H * 0.008, rect.y + H * 0.008, tw + fs * 1.1, fs * 1.7, fs * 0.4);
+      ctx.roundRect(chipX, chipY, tw + fs * 1.1, fs * 1.7, fs * 0.4);
       ctx.fill();
       ctx.fillStyle = '#fff3d6';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(label, rect.x + H * 0.008 + fs * 0.55, rect.y + H * 0.008 + fs * 0.88);
+      ctx.fillText(label, chipX + fs * 0.55, chipY + fs * 0.88);
       ctx.restore();
     }
   });
 
+  // Thin black poster frame around the whole cover.
+  ctx.save();
+  ctx.strokeStyle = '#0d040c';
+  ctx.lineWidth = Math.max(4, H * 0.006);
+  ctx.strokeRect(0, 0, W, H);
+  ctx.restore();
+
   // A warm dusk wash behind the title so white-on-photo lettering always reads.
-  const wash = ctx.createLinearGradient(0, H * 0.5, 0, H * 0.9);
+  const wash = ctx.createLinearGradient(0, H * 0.46, 0, H * 0.92);
   wash.addColorStop(0, 'rgba(20,6,15,0)');
-  wash.addColorStop(1, 'rgba(20,6,15,0.42)');
+  wash.addColorStop(1, 'rgba(20,6,15,0.5)');
   ctx.fillStyle = wash;
-  ctx.fillRect(0, H * 0.5, W, H * 0.4);
+  ctx.fillRect(0, H * 0.46, W, H * 0.46);
 
   const title = (state.title || 'VICE HEAT').toUpperCase();
   drawStarsAndQuote(ctx, state.quote || 'PURE SUNSET ADRENALINE', state.quoteSrc || 'THE VICE GAZETTE', W, H);
@@ -474,11 +593,20 @@ export function drawCover(canvas, state) {
   strip.addColorStop(1, '#3b0f8f');
   ctx.fillStyle = strip;
   ctx.fillRect(0, stripY, W, stripH);
+  // Low setting sun behind the tagline, then a row of fuller palms.
+  ctx.save();
+  const sunG = ctx.createRadialGradient(W / 2, stripY + stripH * 0.98, 0, W / 2, stripY + stripH * 0.98, stripH * 1.1);
+  sunG.addColorStop(0, 'rgba(255, 210, 63, 0.5)');
+  sunG.addColorStop(0.6, 'rgba(255, 122, 24, 0.28)');
+  sunG.addColorStop(1, 'rgba(255, 122, 24, 0)');
+  ctx.fillStyle = sunG;
+  ctx.fillRect(W / 2 - stripH * 1.1, stripY, stripH * 2.2, stripH);
+  ctx.restore();
   ctx.save();
   ctx.globalAlpha = 0.9;
   const palmS = stripH * 0.9;
-  for (let i = 0; i < 9; i++) {
-    const px = (W * (i + 0.5)) / 9 + (i % 2 === 0 ? W * 0.01 : -W * 0.01);
+  for (let i = 0; i < 11; i++) {
+    const px = (W * (i + 0.5)) / 11 + (i % 2 === 0 ? W * 0.008 : -W * 0.008);
     drawPalm(ctx, px, stripY + stripH * 0.98, palmS / 40);
   }
   ctx.restore();
