@@ -15,10 +15,10 @@ Entry for make.fun bounty `gta6-cover-art-01`: "Vice Heat Cover Studio" — a st
 ## Run it
 
 ```sh
-npx serve app
+node serve.ts   # serves app/ on http://localhost:8080
 ```
 
-or open `app/index.html` directly in a browser. No network requests, no build step.
+or `npx serve app`, or open `app/index.html` directly in a browser. No network requests, no build step.
 
 ## Screenshots
 
