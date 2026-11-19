@@ -6,7 +6,6 @@
 // scripts are files under app/, photos never leave the machine.
 
 import { drawCover, SIZES, LAYOUTS, GRADES, layoutRects, layoutPolys } from './cover.js';
-import { makeShootoutImage } from './shootout.js';
 import { runShot } from './shots.js';
 
 const canvas = document.getElementById('cover');
@@ -21,8 +20,6 @@ const SAMPLES = [
   { file: 'gasstation.jpg', name: 'Gas station', anchorX: 0.5, anchorY: 0.45 },
   { file: 'motorcycle.jpg', name: 'Motorcycle', anchorX: 0.5, anchorY: 0.45 },
   { file: 'speedboat.jpg', name: 'Speedboat', anchorX: 0.5, anchorY: 0.45 },
-  // Procedural, drawn in-app: a gang shootout at dusk, no photo fetched.
-  { file: null, name: 'Shootout', anchorX: 0.5, anchorY: 0.45, procedural: true },
 ];
 
 const state = {
@@ -90,9 +87,7 @@ export function loadImage(url) {
 async function loadSamples() {
   for (const s of SAMPLES) {
     try {
-      const img = s.procedural
-        ? makeShootoutImage()
-        : await loadImage(`samples/${s.file}`);
+      const img = await loadImage(`samples/${s.file}`);
       state.photos.push({ img, name: s.name, anchorX: s.anchorX, anchorY: s.anchorY });
     } catch {
       // A missing sample just leaves one fewer photo in the strip.
@@ -130,8 +125,7 @@ function renderStrip() {
     btn.setAttribute('role', 'option');
     btn.title = photo.name;
     const img = document.createElement('img');
-    // Procedural samples are canvases, not <img>s: snapshot one for the thumb.
-    img.src = photo.img.tagName === 'CANVAS' ? photo.img.toDataURL('image/jpeg', 0.85) : photo.img.src;
+    img.src = photo.img.src;
     img.alt = photo.name;
     img.draggable = true;
     const n = document.createElement('span');
@@ -545,7 +539,7 @@ document.getElementById('surpriseTop').addEventListener('click', () => {
   Object.assign(state, pick);
   resetPanels();
   state.panels.forEach((p, i) => {
-    p.photo = [0, 1, 6, 3, 4, 5][i % 6] % state.photos.length;
+    p.photo = [0, 1, 2, 3, 4, 5][i % 6] % state.photos.length;
     p.cy = state.photos[p.photo]?.anchorY ?? 0.5;
   });
   document.getElementById('title').value = state.title;
@@ -562,9 +556,8 @@ document.getElementById('surpriseTop').addEventListener('click', () => {
 async function boot() {
   await loadSamples();
   state.panels.forEach((p, i) => {
-    // Default spread: boulevard hero, then the rest across the panels —
-    // the procedural shootout takes the top-right panel.
-    p.photo = [0, 1, 6, 3, 4, 5][i % 6] % state.photos.length;
+    // Default spread: boulevard hero, then the rest across the panels.
+    p.photo = [0, 1, 2, 3, 4, 5][i % 6] % state.photos.length;
     p.cy = state.photos[p.photo]?.anchorY ?? 0.5;
   });
   renderStrip();

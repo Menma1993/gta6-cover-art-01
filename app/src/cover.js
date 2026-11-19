@@ -54,49 +54,77 @@ export function seededRandom(seedText) {
 }
 
 // Cell tables for the slanted comic panels (GTA style): [x0, x1, y0, y1] as
-// fractions of the panel area, plus the divider slant — a fraction of W
-// applied at the top of the area, easing to 0 at the bottom. Internal
-// vertical dividers lean; outer edges stay vertical, so the collage bleeds
-// cleanly to the poster edges with no bare corner triangles.
+// fractions of the panel area, plus per-divider leans that turn the cells
+// into true trapezoids. vLean maps a vertical divider's fx to its lean
+// (fraction of W, constant over the height, pivoting at mid-height); hLean
+// maps a horizontal divider's fy to its lean (fraction of H across the
+// width). Neighbouring vertical dividers lean in OPPOSITE directions and
+// horizontal dividers slant both ways, so the collage reads as a fan of
+// trapezoids like the classic GTA cover — not a grid of near-rectangles.
+// The leans are keyed per divider, so any corner (fx, fy) is computed
+// identically by every cell that shares it: the tiling stays gapless.
 const LAYOUT_CELLS = {
   hero: {
-    slant: 0.03,
+    // Mirrors the top-1 "Sunset State" landscape: wide hero left, right
+    // column of face + road / gas station / motorcycle + boat, row dividers
+    // slanting down-right then up-right. Hero edge leans left going down
+    // (top wider), moto/boat divider leans the other way, like the reference.
+    vLean: { 0.55: -0.035, 0.78: -0.03, 0.79: 0.025 },
+    hLean: { 0.34: 0.08, 0.64: -0.07 },
     cells: [
-      [0, 0.50, 0, 1], [0.50, 0.75, 0, 0.50], [0.75, 1, 0, 0.50],
-      [0.50, 0.75, 0.50, 1], [0.75, 1, 0.50, 0.75], [0.75, 1, 0.75, 1],
+      [0, 0.55, 0, 1], [0.55, 0.78, 0, 0.34], [0.78, 1, 0, 0.34],
+      [0.55, 1, 0.34, 0.64], [0.55, 0.79, 0.64, 1], [0.79, 1, 0.64, 1],
     ],
   },
   comic: {
-    slant: -0.025,
+    vLean: { 0.58: 0.03, 0.30: -0.025, 0.70: 0.025 },
+    hLean: { 0.36: 0.07, 0.68: -0.06 },
     cells: [
       [0, 0.58, 0, 0.36], [0.58, 1, 0, 0.36], [0, 0.30, 0.36, 0.68],
       [0.30, 0.70, 0.36, 0.68], [0.70, 1, 0.36, 0.68], [0, 1, 0.68, 1],
     ],
   },
   nine: {
-    slant: 0.02,
+    vLean: { [1 / 3]: 0.02, [2 / 3]: -0.02 },
+    hLean: { [1 / 3]: 0.05, [2 / 3]: -0.05 },
     cells: [
       [0, 1 / 3, 0, 1 / 3], [1 / 3, 2 / 3, 0, 1 / 3], [2 / 3, 1, 0, 1 / 3],
       [0, 1 / 3, 1 / 3, 2 / 3], [1 / 3, 2 / 3, 1 / 3, 2 / 3], [2 / 3, 1, 1 / 3, 2 / 3],
       [0, 1 / 3, 2 / 3, 1], [1 / 3, 2 / 3, 2 / 3, 1], [2 / 3, 1, 2 / 3, 1],
     ],
   },
-  single: { slant: 0, cells: [[0, 1, 0, 1]] },
-  two: { slant: 0.03, cells: [[0, 0.5, 0, 1], [0.5, 1, 0, 1]] },
+  single: { vLean: {}, hLean: {}, cells: [[0, 1, 0, 1]] },
+  two: { vLean: { 0.5: 0.04 }, hLean: {}, cells: [[0, 0.5, 0, 1], [0.5, 1, 0, 1]] },
   three: {
-    slant: 0.025,
+    vLean: { 0.55: 0.035 },
+    hLean: { 0.5: 0.07 },
     cells: [[0, 0.55, 0, 1], [0.55, 1, 0, 0.5], [0.55, 1, 0.5, 1]],
   },
   four: {
-    slant: 0.02,
+    vLean: { 0.5: 0.03 },
+    hLean: { 0.5: -0.06 },
     cells: [[0, 0.5, 0, 0.5], [0.5, 1, 0, 0.5], [0, 0.5, 0.5, 1], [0.5, 1, 0.5, 1]],
   },
 };
 
+/** Lean of one divider from a per-divider table (float keys, tolerant). */
+function leanFor(table, v) {
+  for (const [k, lean] of Object.entries(table)) {
+    if (Math.abs(Number(k) - v) < 1e-9) return lean;
+  }
+  return 0;
+}
+
 /** X of a vertical divider at a given height fraction (outer edges fixed). */
-function dividerX(fx, fy, slant, W) {
+function dividerX(fx, fy, vLean, W) {
   if (fx <= 0 || fx >= 1) return fx * W;
-  return fx * W + slant * W * (1 - fy);
+  return fx * W + leanFor(vLean, fx) * W * (fy - 0.5);
+}
+
+/** Y of a horizontal divider at a given width fraction (outer edges fixed). */
+function dividerY(fy, fx, hLean, areaH) {
+  if (fy <= 0 || fy >= 1) return fy * areaH;
+  return fy * areaH + leanFor(hLean, fy) * areaH * (fx - 0.5);
 }
 
 /** Panel polygons for a layout: [{ pts: [[x, y] x4], rect: {x, y, w, h} }]. */
@@ -105,13 +133,11 @@ export function layoutPolys(name, W, H) {
   const areaH = H * 0.88; // panels stop above the tagline strip
   const g = Math.round(Math.min(W, H) * 0.007); // cream gutter
   return def.cells.map(([fx0, fx1, fy0, fy1]) => {
-    const y0 = fy0 * areaH;
-    const y1 = fy1 * areaH;
     const pts = [
-      [dividerX(fx0, fy0, def.slant, W) + g, y0 + g],
-      [dividerX(fx1, fy0, def.slant, W) - g, y0 + g],
-      [dividerX(fx1, fy1, def.slant, W) - g, y1 - g],
-      [dividerX(fx0, fy1, def.slant, W) + g, y1 - g],
+      [dividerX(fx0, fy0, def.vLean, W) + g, dividerY(fy0, fx0, def.hLean, areaH) + g],
+      [dividerX(fx1, fy0, def.vLean, W) - g, dividerY(fy0, fx1, def.hLean, areaH) + g],
+      [dividerX(fx1, fy1, def.vLean, W) - g, dividerY(fy1, fx1, def.hLean, areaH) - g],
+      [dividerX(fx0, fy1, def.vLean, W) + g, dividerY(fy1, fx0, def.hLean, areaH) - g],
     ];
     const xs = pts.map((p) => p[0]);
     const ys = pts.map((p) => p[1]);
@@ -540,11 +566,8 @@ export function drawCover(canvas, state) {
       ctx.restore();
     }
     // Panel caption chip, top-left inside the panel (skipped on low panels
-    // the title covers, so no half-hidden chip peeks out). The procedural
-    // shootout photo is labelled as what it is.
-    const label = photo?.name === 'Shootout'
-      ? 'THE SHOOTOUT'
-      : labels[i % labels.length];
+    // the title covers, so no half-hidden chip peeks out).
+    const label = labels[i % labels.length];
     if (label && pts[0][1] < H * 0.55) {
       const fs = Math.max(11, H * 0.016);
       ctx.save();
@@ -582,7 +605,11 @@ export function drawCover(canvas, state) {
   drawStarsAndQuote(ctx, state.quote || 'PURE SUNSET ADRENALINE', state.quoteSrc || 'THE VICE GAZETTE', W, H);
   const { size: titleSize } = drawTitle(ctx, title, W, H, state.grade);
   drawSubtitle(ctx, state.subtitle || 'Neon Palms', W, H, titleSize);
-  drawSeal(ctx, W * 0.885, H * 0.44, H * 0.062);
+  // Seal straddles a panel junction, like the top-1 cover: hero layout puts
+  // it on the face/gas-station corner; other layouts keep it at the right
+  // edge, clear of the panel chips.
+  const sealPos = { hero: [0.775, 0.315] }[state.layout] || [0.885, 0.44];
+  drawSeal(ctx, W * sealPos[0], H * sealPos[1], H * 0.062);
 
   // Tagline strip: gradient band, palm silhouettes, spaced capitals.
   const stripY = H * 0.88;

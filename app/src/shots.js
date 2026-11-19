@@ -19,10 +19,10 @@ export async function runShot(shot, query, boot) {
     state.layout = query.get('layout');
     const n = { hero: 6, comic: 6, nine: 9, single: 1, two: 2, three: 3, four: 4 }[state.layout] || 6;
     state.panels = Array.from({ length: n }, (_, i) => ({
-      photo: [0, 1, 6, 3, 4, 5][i % 6] % Math.max(1, state.photos.length),
+      photo: [0, 1, 2, 3, 4, 5][i % 6] % Math.max(1, state.photos.length),
       zoom: 1,
       cx: 0.5,
-      cy: state.photos[[0, 1, 6, 3, 4, 5][i % 6] % Math.max(1, state.photos.length)]?.anchorY ?? 0.5,
+      cy: state.photos[[0, 1, 2, 3, 4, 5][i % 6] % Math.max(1, state.photos.length)]?.anchorY ?? 0.5,
     }));
   }
   if (query.get('grade')) state.grade = query.get('grade');
