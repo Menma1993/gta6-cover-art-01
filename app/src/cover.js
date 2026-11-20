@@ -12,13 +12,13 @@ export const SIZES = {
 export const SAMPLES = [
   { file: 'boulevard.jpg', anchor: [0.42, 0.28] },
   { file: 'pier.jpg', anchor: [0.62, 0.35] },
-  { file: 'tower.jpg', anchor: [0.55, 0.5] },
-  { file: 'gas.jpg', anchor: [0.5, 0.45] },
-  { file: 'moto.jpg', anchor: [0.55, 0.5] },
-  { file: 'boat.jpg', anchor: [0.5, 0.42] },
+  { file: 'rooftop.jpg', anchor: [0.52, 0.6] },
+  { file: 'club.jpg', anchor: [0.42, 0.28] },
+  { file: 'neon.jpg', anchor: [0.5, 0.62] },
+  { file: 'yacht.jpg', anchor: [0.5, 0.42] },
 ];
 
-const TAGS = ['THE DRIVER', 'THE ANGLER', 'THE LOOKOUT', 'THE FIXER', 'THE RIDER', 'THE COURIER'];
+const TAGS = ['THE DRIVER', 'THE ANGLER', 'THE CREW', 'THE INSIDER', 'THE COURIER', 'THE BOSS'];
 
 export const GRADES = {
   sunset: { wash: 'rgba(255, 122, 26, 0.20)', glow: '#ffd9a0', sat: 1.0 },
@@ -107,6 +107,7 @@ export function buildPanels(layout, size) {
   if (layout === 'hero') {
     if (size === 'portrait') {
       return [
+        // portrait hero: top edge level, bottom edges slant in opposite directions
         panel(0, [[0, 0.06], [0.98, 0.06], [0.98, 0.645], [0, 0.60]]),
         panel(1, [[0, 0.618], [0.47, 0.64], [0.52, 0.815], [0, 0.79]]),
         panel(2, [[0.485, 0.64], [0.98, 0.663], [0.98, 0.79], [0.535, 0.815]]),
@@ -115,6 +116,7 @@ export function buildPanels(layout, size) {
       ];
     }
     return [
+      // hero landscape: slanted hero flank, right column trapezoids slanting alternately
       panel(0, [[0, 0.06], [0.415, 0.06], [0.295, 0.925], [0, 0.925]]),
       panel(1, [[0.43, 0.06], [0.665, 0.06], [0.70, 0.385], [0.388, 0.355]]),
       panel(2, [[0.68, 0.06], [0.99, 0.06], [0.99, 0.36], [0.715, 0.385]]),
@@ -125,6 +127,7 @@ export function buildPanels(layout, size) {
   }
   if (layout === 'comic6') {
     return [
+      // comic6: every divider slants, alternating direction row by row
       panel(0, [[0, 0.06], [0.345, 0.06], [0.315, 0.483], [0, 0.47]]),
       panel(1, [[0.36, 0.06], [0.675, 0.06], [0.705, 0.496], [0.33, 0.483]]),
       panel(2, [[0.69, 0.06], [0.99, 0.06], [0.99, 0.51], [0.72, 0.496]]),
@@ -152,12 +155,14 @@ export function buildPanels(layout, size) {
   }
   if (layout === 'two') {
     return [
+      // two: five-point chevron split, the two panels interlock diagonally
       panel(0, [[0, 0.06], [0.55, 0.06], [0.50, 0.50], [0.44, 0.925], [0, 0.925]]),
       panel(1, [[0.565, 0.06], [1, 0.06], [1, 0.925], [0.455, 0.925], [0.515, 0.50]]),
     ];
   }
   if (layout === 'three') {
     return [
+      // three: chevron split with a diagonal crossbar between the two right panels
       panel(0, [[0, 0.06], [0.55, 0.06], [0.50, 0.50], [0.44, 0.925], [0, 0.925]]),
       panel(1, [[0.565, 0.06], [1, 0.06], [1, 0.46], [0.515, 0.485]]),
       panel(2, [[0.515, 0.505], [1, 0.48], [1, 0.925], [0.455, 0.925]]),
@@ -165,6 +170,7 @@ export function buildPanels(layout, size) {
   }
   // four
   return [
+    // four: all four dividers slant, none axis-aligned
     panel(0, [[0, 0.06], [0.52, 0.06], [0.46, 0.49], [0, 0.465]]),
     panel(1, [[0.535, 0.06], [1, 0.06], [1, 0.44], [0.475, 0.475]]),
     panel(2, [[0, 0.485], [0.445, 0.51], [0.52, 0.925], [0, 0.925]]),

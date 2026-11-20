@@ -49,9 +49,12 @@ to swap its photo. **Surprise Me** shuffles layout, grade and captions.
 
 - `boulevard.jpg`, `pier.jpg` — sample photos made for make.fun with an
   image model, free to use (from the competition kit).
-- `gas.jpg`, `moto.jpg`, `tower.jpg`, `boat.jpg` — CC0 photos from Rawpixel
-  via Openverse: gas station at night; motorcycle rider riding into a sunset;
-  lifeguard tower at sunset; speedboat on open sea.
+- `neon.jpg`, `rooftop.jpg`, `club.jpg`, `yacht.jpg` — freely licensed
+  photos from Wikimedia Commons: neon street signs at blue hour in Shinjuku
+  (Basile Morin, CC BY-SA 4.0); friends watching the sunset from a rooftop
+  (Heath Cajandig, CC BY 2.0); a woman laughing at a neon-lit bar
+  (PattayaPatrol, CC BY-SA 4.0); superyacht Sea Owl in Puerto Rico
+  (Darth Stabro, CC BY-SA 4.0).
 - Fonts are SIL OFL 1.1: **Anton** (titles) and **Oswald** (tags, quotes,
   credits), both from Google Fonts. **Yellowtail** (script subtitle) is
   Apache 2.0 per the license declared in the font file's own name table
